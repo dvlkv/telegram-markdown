@@ -50,11 +50,11 @@ export const md = {
     codeBlock: (text: string, lang?: string) => escaped(`\`\`\`${lang ?? ''}\n${text}\n\`\`\``),
     blockQuote: (text: string) => escaped(text.split('\n').map(line => `>${line}`).join('\n')),
     expandableBlockQuote: (text: string) => {
-        let lines = text.split('\n');
+        const lines = text.split('\n');
         let result = '';
-        result += '**>' + lines.shift() + '\n';
-        for (let line of lines) {
-            result += '>' + line + '\n';
+        result += `**>${lines.shift()}\n`;
+        for (const line of lines) {
+            result += `>${line}\n`;
         }
         result += '||';
         return escaped(result);
