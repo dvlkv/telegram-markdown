@@ -145,7 +145,7 @@ export function markdownV2(strings: TemplateStringsArray, ...values: unknown[]) 
                 }
                 result += value;
             } else {
-                result += escapeMarkdown(value as string);
+                result += escapeMarkdown(String(value));
             }
         }
     }
