@@ -86,11 +86,11 @@ code block
 
     describe('codeBlock', () => {
       it('should create code block without language', () => {
-        expect(md.codeBlock('console.log("hello")').toString()).toBe('```\nconsole.log("hello")\n```');
+        expect(md.codeBlock('console.log("hello")').toString()).toBe('```\nconsole\\.log\\("hello"\\)\n```');
       });
 
       it('should create code block with language', () => {  
-        expect(md.codeBlock('console.log("hello")', 'javascript').toString()).toBe('```javascript\nconsole.log("hello")\n```');
+        expect(md.codeBlock('console.log("hello")', 'javascript').toString()).toBe('```javascript\nconsole\\.log\\("hello"\\)\n```');
       });
     });
 
