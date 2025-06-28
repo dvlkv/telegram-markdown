@@ -190,6 +190,9 @@ MIT
 
 ## Changelog
 
+### 2.0.1
+- Bugfix: Accepts more flexible nested values in formatting functions (e.g., md.bold, md.italic, etc.)
+
 ### 2.0.0
 - **API Overhaul & Nesting Support:**
   - All formatting functions (`md.bold`, `md.italic`, `md.underline`, etc.) now support string, template literal, or `MdEscapedString` as input, and can be nested.

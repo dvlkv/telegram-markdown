@@ -57,16 +57,18 @@ function isEscapedString(value: unknown): value is MdEscapedString {
 
 type MdInput = string | TemplateStringsArray | MdEscapedString;
 
+type MdNestedValue = string | MdEscapedStringNestable;
+
 function processMdInput(
     wrapper: (s: string) => string,
     textOrStrings: MdInput,
-    ...values: MdEscapedStringNestable[]
+    ...values: MdNestedValue[]
 ): MdEscapedStringNestable {
     const fullText = getFullText(textOrStrings, values);
     return escapedNestable(wrapper(fullText));
 }
 
-function getFullText(text: MdInput, values: MdEscapedStringNestable[]): string {
+function getFullText(text: MdInput, values: MdNestedValue[]): string {
     if (isEscapedString(text)) {
         return text.toString();
     } else if (Array.isArray(text)) {
@@ -89,27 +91,27 @@ function getFullText(text: MdInput, values: MdEscapedStringNestable[]): string {
 }
 
 export const md = {
-    bold: (text: MdInput, ...values: MdEscapedStringNestable[]) => processMdInput(s => `*${s}*`, text, ...values),
-    italic: (text: MdInput, ...values: MdEscapedStringNestable[]) => processMdInput(s => `_${s}_`, text, ...values),
-    underline: (text: MdInput, ...values: MdEscapedStringNestable[]) => processMdInput(s => `__${s}__`, text, ...values),
-    strikethrough: (text: MdInput, ...values: MdEscapedStringNestable[]) => processMdInput(s => `~${s}~`, text, ...values),
-    spoiler: (text: MdInput, ...values: MdEscapedStringNestable[]) => processMdInput(s => `||${s}||`, text, ...values),
-    inlineUrl: (url: string) => (text: MdInput, ...values: MdEscapedStringNestable[]) =>
+    bold: (text: MdInput, ...values: MdNestedValue[]) => processMdInput(s => `*${s}*`, text, ...values),
+    italic: (text: MdInput, ...values: MdNestedValue[]) => processMdInput(s => `_${s}_`, text, ...values),
+    underline: (text: MdInput, ...values: MdNestedValue[]) => processMdInput(s => `__${s}__`, text, ...values),
+    strikethrough: (text: MdInput, ...values: MdNestedValue[]) => processMdInput(s => `~${s}~`, text, ...values),
+    spoiler: (text: MdInput, ...values: MdNestedValue[]) => processMdInput(s => `||${s}||`, text, ...values),
+    inlineUrl: (url: string) => (text: MdInput, ...values: MdNestedValue[]) =>
         processMdInput(s => `[${s}](${url})`, text, ...values),
-    inlineMention: (userId: string) => (text: MdInput, ...values: MdEscapedStringNestable[]) =>
+    inlineMention: (userId: string) => (text: MdInput, ...values: MdNestedValue[]) =>
         processMdInput(s => `[${s}](tg://user?id=${userId})`, text, ...values),
     customEmoji: (emoji: string, emojiId: string) => escapedNestable(`![${emoji}](tg://emoji?id=${emojiId})`),
-    inlineCode: (text: MdInput, ...values: MdEscapedStringNestable[]) => processMdInput(s => `\`${s}\``, text, ...values),
+    inlineCode: (text: MdInput, ...values: MdNestedValue[]) => processMdInput(s => `\`${s}\``, text, ...values),
     
     // Code block do not need to be escaped inside
     codeBlock: (code: string, lang?: string) => escapedNestable(`\u0060\u0060\u0060${lang ?? ''}\n${code}\n\u0060\u0060\u0060`, true),
 
     // Block quote and expandable block quote are not allowed to be nested inside any other formatting
-    blockQuote: (text: MdInput, ...values: MdEscapedStringNestable[]) => {
+    blockQuote: (text: MdInput, ...values: MdNestedValue[]) => {
         const fullText = getFullText(text, values);
         return escaped(fullText.split('\n').map(line => `>${line}`).join('\n'), true);
     },
-    expandableBlockQuote: (text: MdInput, ...values: MdEscapedStringNestable[]) => {
+    expandableBlockQuote: (text: MdInput, ...values: MdNestedValue[]) => {
         const fullText = getFullText(text, values);
         const lines: string[] = fullText.split('\n');
         const maybeFirstLine: string | undefined = lines.shift();
