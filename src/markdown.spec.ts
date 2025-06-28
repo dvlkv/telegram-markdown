@@ -1,4 +1,4 @@
-import { markdownV2, md } from './markdown';
+import { escapeMarkdown, markdownV2, md } from './markdown';
 
 describe('markdown', () => {
   it('should escape markdown', () => {
@@ -23,7 +23,8 @@ describe('markdown', () => {
             kel __underline__ 
             dsdsd ~strikethrough~ 
             dsdsd \`code\` 
-            dsdsd \`\`\`
+            dsdsd
+\`\`\`
 code block
 \`\`\`
         `);
@@ -62,13 +63,13 @@ code block
 
     describe('inlineUrl', () => {
       it('should create inline URL markdown', () => {
-        expect(md.inlineUrl('Click here', 'http://example.com').toString()).toBe('[Click here](http://example.com)');
+        expect(md.inlineUrl('http://example.com')('Click here').toString()).toBe('[Click here](http://example.com)');
       });
     });
 
     describe('inlineMention', () => {
       it('should create inline mention markdown', () => {
-        expect(md.inlineMention('John Doe', '123456789').toString()).toBe('[John Doe](tg://user?id=123456789)');
+        expect(md.inlineMention('123456789')('John Doe').toString()).toBe('[John Doe](tg://user?id=123456789)');
       });
     });
 
@@ -86,11 +87,11 @@ code block
 
     describe('codeBlock', () => {
       it('should create code block without language', () => {
-        expect(md.codeBlock('console.log("hello")').toString()).toBe('```\nconsole\\.log\\("hello"\\)\n```');
+        expect(md.codeBlock('console.log("hello")').toString()).toBe('```\nconsole.log("hello")\n```');
       });
 
       it('should create code block with language', () => {  
-        expect(md.codeBlock('console.log("hello")', 'javascript').toString()).toBe('```javascript\nconsole\\.log\\("hello"\\)\n```');
+        expect(md.codeBlock('console.log("hello")', 'javascript').toString()).toBe('```javascript\nconsole.log("hello")\n```');
       });
     });
 
@@ -110,15 +111,15 @@ code block
 
     describe('expandableBlockQuote', () => {
       it('should create expandable block quote with first line bold', () => {
-        expect(md.expandableBlockQuote('First line\nSecond line\nThird line').toString()).toBe('**>First line\n>Second line\n>Third line\n||');
+        expect(md.expandableBlockQuote('First line\nSecond line\nThird line').toString()).toBe('**>First line\n>Second line\n>Third line||\n');
       });
 
       it('should handle single line', () => {
-        expect(md.expandableBlockQuote('Single line').toString()).toBe('**>Single line\n||');
+        expect(md.expandableBlockQuote('Single line').toString()).toBe('**>Single line||\n');
       });
 
       it('should handle empty string', () => {
-        expect(md.expandableBlockQuote('').toString()).toBe('**>\n||');
+        expect(md.expandableBlockQuote('').toString()).toBe('**>||\n');
       });
     });
   });
@@ -140,6 +141,77 @@ code block
 
     it('should handle string with no special characters', () => {
       expect(markdownV2`Hello world`).toBe('Hello world');
+    });
+
+    it('should not escape markdown twice', () => {
+      expect(markdownV2`*_italic_*`).toBe('\\*\\_italic\\_\\*');
+      expect(markdownV2`${md.bold('_italic_')}`).toBe('*\\_italic\\_*');
+      expect(markdownV2`${md.bold(escapeMarkdown('_italic_'))}`).toBe('*\\_italic\\_*');
+    });
+  });
+
+  describe('md API overloads and nesting', () => {
+    it('bold: string, template, MdEscapedString, nested', () => {
+      expect(md.bold('_italic_').toString()).toBe('*\\_italic\\_*');
+      expect(md.bold`${md.italic('italic')}`.toString()).toBe('*_italic_*');
+      expect(md.bold`test ${md.italic('italic')}`.toString()).toBe('*test _italic_*');
+    });
+    it('italic: string, template, MdEscapedString, nested', () => {
+      expect(md.italic('*bold*').toString()).toBe('_\\*bold\\*_');
+      expect(md.italic(md.bold('bold')).toString()).toBe('_*bold*_');
+      expect(md.italic`test ${md.bold('bold')}`.toString()).toBe('_test *bold*_');
+    });
+    it('underline: string, template, MdEscapedString, nested', () => {
+      expect(md.underline('*bold*').toString()).toBe('__\\*bold\\*__');
+      expect(md.underline(md.bold('bold')).toString()).toBe('__*bold*__');
+      expect(md.underline`test ${md.bold('bold')}`.toString()).toBe('__test *bold*__');
+    });
+    it('strikethrough: string, template, MdEscapedString, nested', () => {
+      expect(md.strikethrough('*bold*').toString()).toBe('~\\*bold\\*~');
+      expect(md.strikethrough(md.bold('bold')).toString()).toBe('~*bold*~');
+      expect(md.strikethrough`test ${md.bold('bold')}`.toString()).toBe('~test *bold*~');
+    });
+    it('spoiler: string, template, MdEscapedString, nested', () => {
+      expect(md.spoiler('*bold*').toString()).toBe('||\\*bold\\*||');
+      expect(md.spoiler(md.bold('bold')).toString()).toBe('||*bold*||');
+      expect(md.spoiler`test ${md.bold('bold')}`.toString()).toBe('||test *bold*||');
+    });
+    it('inlineUrl: string, template, MdEscapedString, nested', () => {
+      expect(md.inlineUrl('http://a')('*bold*').toString()).toBe('[\\*bold\\*](http://a)');
+      expect(md.inlineUrl('http://a')(md.bold('bold')).toString()).toBe('[*bold*](http://a)');
+    });
+    it('inlineMention: string, template, MdEscapedString, nested', () => {
+      expect(md.inlineMention('123')('*bold*').toString()).toBe('[\\*bold\\*](tg://user?id=123)');
+      expect(md.inlineMention('123')(md.bold('bold')).toString()).toBe('[*bold*](tg://user?id=123)');
+    });
+    it('inlineCode: string, template, MdEscapedString, nested', () => {
+      expect(md.inlineCode('*bold*').toString()).toBe('`\\*bold\\*`');
+      expect(md.inlineCode(md.bold('bold')).toString()).toBe('`*bold*`');
+      expect(md.inlineCode`test ${md.bold('bold')}`.toString()).toBe('`test *bold*`');
+    });
+    it('codeBlock: string, template, MdEscapedString, nested', () => {
+      expect(md.codeBlock('*bold*').toString()).toBe('```\n*bold*\n```');
+      expect(md.codeBlock('*bold*', 'js').toString()).toBe('```js\n*bold*\n```');
+    });
+    it('blockQuote: string, template, MdEscapedString, nested', () => {
+      expect(md.blockQuote('*bold*').toString()).toBe('>\\*bold\\*');
+      expect(md.blockQuote(md.bold('bold')).toString()).toBe('>*bold*');
+      expect(md.blockQuote`test ${md.bold('bold')}`.toString()).toBe('>test *bold*');
+    });
+    it('expandableBlockQuote: string, template, MdEscapedString, nested', () => {
+      expect(md.expandableBlockQuote('*bold*').toString()).toBe('**>\\*bold\\*||\n');
+      expect(md.expandableBlockQuote(md.bold('bold')).toString()).toBe('**>*bold*||\n');
+      expect(md.expandableBlockQuote`test ${md.bold('bold')}`.toString()).toBe('**>test *bold*||\n');
+    });
+    it('inlineUrl: curried API', () => {
+      expect(md.inlineUrl('http://a')('*bold*').toString()).toBe('[\\*bold\\*](http://a)');
+      expect(md.inlineUrl('http://a')(md.bold('bold')).toString()).toBe('[*bold*](http://a)');
+      expect(md.inlineUrl('http://a')`test ${md.bold('bold')}`.toString()).toBe('[test *bold*](http://a)');
+    });
+    it('inlineMention: curried API', () => {
+      expect(md.inlineMention('123')('*bold*').toString()).toBe('[\\*bold\\*](tg://user?id=123)');
+      expect(md.inlineMention('123')(md.bold('bold')).toString()).toBe('[*bold*](tg://user?id=123)');
+      expect(md.inlineMention('123')`test ${md.bold('bold')}`.toString()).toBe('[test *bold*](tg://user?id=123)');
     });
   });
 });

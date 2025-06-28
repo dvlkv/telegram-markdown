@@ -26,43 +26,106 @@
 // >The last line of the expandable block quotation with the expandability mark||
 
 export class MdEscapedString {
-    constructor(public readonly text: string) {}
+    constructor(public readonly text: string, public readonly trimStart = false) {}
 
     toString() {
         return this.text;
     }
 }
 
-function escaped(text: string) {
-    return new MdEscapedString(text);
+export class MdEscapedStringNestable extends MdEscapedString {
+    get nestable() {
+        return true;
+    }
+    
+    constructor(text: string, trimStart = false) {
+        super(text, trimStart);
+    }
+}
+
+function escaped(text: string, trimStart = false) {
+    return new MdEscapedString(text, trimStart);
+}
+
+function escapedNestable(text: string, trimStart = false) {
+    return new MdEscapedStringNestable(text, trimStart);
+}
+
+function isEscapedString(value: unknown): value is MdEscapedString {
+    return value instanceof MdEscapedString;
+}
+
+type MdInput = string | TemplateStringsArray | MdEscapedString;
+
+function processMdInput(
+    wrapper: (s: string) => string,
+    textOrStrings: MdInput,
+    ...values: MdEscapedStringNestable[]
+): MdEscapedStringNestable {
+    const fullText = getFullText(textOrStrings, values);
+    return escapedNestable(wrapper(fullText));
+}
+
+function getFullText(text: MdInput, values: MdEscapedStringNestable[]): string {
+    if (isEscapedString(text)) {
+        return text.toString();
+    } else if (Array.isArray(text)) {
+        let result = '';
+        for (let i = 0; i < text.length; i++) {
+            result += escapeMarkdown(text[i] as string).toString();
+            if (i < values.length) {
+                const value = values[i];
+                if (isEscapedString(value)) {
+                    result += value.toString();
+                } else {
+                    result += escapeMarkdown(String(value)).toString();
+                }
+            }
+        }
+        return result;
+    } else {
+        return escapeMarkdown(text as string).toString();
+    }
 }
 
 export const md = {
-    bold: (text: string) => escaped(`*${escapeMarkdown(text)}*`),
-    italic: (text: string) => escaped(`_${escapeMarkdown(text)}_`),
-    underline: (text: string) => escaped(`__${escapeMarkdown(text)}__`),
-    strikethrough: (text: string) => escaped(`~${escapeMarkdown(text)}~`),
-    spoiler: (text: string) => escaped(`||${escapeMarkdown(text)}||`),
-    inlineUrl: (text: string, url: string) => escaped(`[${escapeMarkdown(text)}](${url})`),
-    inlineMention: (text: string, userId: string) => escaped(`[${text}](tg://user?id=${userId})`),
-    customEmoji: (emoji: string, emojiId: string) => escaped(`![${emoji}](tg://emoji?id=${emojiId})`),
-    inlineCode: (text: string) => escaped(`\`${escapeMarkdown(text)}\``),
-    codeBlock: (text: string, lang?: string) => escaped(`\`\`\`${lang ?? ''}\n${escapeMarkdown(text)}\n\`\`\``),
-    blockQuote: (text: string) => escaped(text.split('\n').map(line => `>${escapeMarkdown(line)}`).join('\n')),
-    expandableBlockQuote: (text: string) => {
-        const lines = text.split('\n');
-        let result = '';
-        result += `**>${escapeMarkdown(lines.shift() ?? '')}\n`;
-        for (const line of lines) {
-            result += `>${escapeMarkdown(line)}\n`;
-        }
-        result += '||';
-        return escaped(result);
+    bold: (text: MdInput, ...values: MdEscapedStringNestable[]) => processMdInput(s => `*${s}*`, text, ...values),
+    italic: (text: MdInput, ...values: MdEscapedStringNestable[]) => processMdInput(s => `_${s}_`, text, ...values),
+    underline: (text: MdInput, ...values: MdEscapedStringNestable[]) => processMdInput(s => `__${s}__`, text, ...values),
+    strikethrough: (text: MdInput, ...values: MdEscapedStringNestable[]) => processMdInput(s => `~${s}~`, text, ...values),
+    spoiler: (text: MdInput, ...values: MdEscapedStringNestable[]) => processMdInput(s => `||${s}||`, text, ...values),
+    inlineUrl: (url: string) => (text: MdInput, ...values: MdEscapedStringNestable[]) =>
+        processMdInput(s => `[${s}](${url})`, text, ...values),
+    inlineMention: (userId: string) => (text: MdInput, ...values: MdEscapedStringNestable[]) =>
+        processMdInput(s => `[${s}](tg://user?id=${userId})`, text, ...values),
+    customEmoji: (emoji: string, emojiId: string) => escapedNestable(`![${emoji}](tg://emoji?id=${emojiId})`),
+    inlineCode: (text: MdInput, ...values: MdEscapedStringNestable[]) => processMdInput(s => `\`${s}\``, text, ...values),
+    
+    // Code block do not need to be escaped inside
+    codeBlock: (code: string, lang?: string) => escapedNestable(`\u0060\u0060\u0060${lang ?? ''}\n${code}\n\u0060\u0060\u0060`, true),
+
+    // Block quote and expandable block quote are not allowed to be nested inside any other formatting
+    blockQuote: (text: MdInput, ...values: MdEscapedStringNestable[]) => {
+        const fullText = getFullText(text, values);
+        return escaped(fullText.split('\n').map(line => `>${line}`).join('\n'), true);
     },
-}
+    expandableBlockQuote: (text: MdInput, ...values: MdEscapedStringNestable[]) => {
+        const fullText = getFullText(text, values);
+        const lines: string[] = fullText.split('\n');
+        const maybeFirstLine: string | undefined = lines.shift();
+        const firstLine: string = maybeFirstLine ?? '';
+        let result = `**>${firstLine}\n`;
+        for (const line of lines) {
+            result += `>${line}\n`;
+        }
+        result = result.trimEnd();
+        result += '||\n';
+        return escaped(result, true);
+    }, 
+};
 
 export function escapeMarkdown(text: string): MdEscapedString {
-    return escaped(text.replace(/[_*[\]()~`>#+\-=|{}.!]/g, '\\$&'));
+    return escapedNestable(text.replace(/[_*[\]()~`>#+\-=|{}.!]/g, '\\$&'));
 }
 
 export function markdownV2(strings: TemplateStringsArray, ...values: unknown[]) {
@@ -75,6 +138,9 @@ export function markdownV2(strings: TemplateStringsArray, ...values: unknown[]) 
         if (i < values.length) {
             const value = values[i];
             if (value instanceof MdEscapedString) {
+                if (value.trimStart) {
+                    result = result.trimEnd() + '\n';
+                }
                 result += value;
             } else {
                 result += escapeMarkdown(value as string);
