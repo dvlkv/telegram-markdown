@@ -190,6 +190,9 @@ MIT
 
 ## Changelog
 
+## 2.0.2
+- Bugfix: string conversions in `markdownV2`
+
 ### 2.0.1
 - Bugfix: Accepts more flexible nested values in formatting functions (e.g., md.bold, md.italic, etc.)
 
