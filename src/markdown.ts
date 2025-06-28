@@ -38,23 +38,23 @@ function escaped(text: string) {
 }
 
 export const md = {
-    bold: (text: string) => escaped(`*${text}*`),
-    italic: (text: string) => escaped(`_${text}_`),
-    underline: (text: string) => escaped(`__${text}__`),
-    strikethrough: (text: string) => escaped(`~${text}~`),
-    spoiler: (text: string) => escaped(`||${text}||`),
-    inlineUrl: (text: string, url: string) => escaped(`[${text}](${url})`),
+    bold: (text: string) => escaped(`*${escapeMarkdown(text)}*`),
+    italic: (text: string) => escaped(`_${escapeMarkdown(text)}_`),
+    underline: (text: string) => escaped(`__${escapeMarkdown(text)}__`),
+    strikethrough: (text: string) => escaped(`~${escapeMarkdown(text)}~`),
+    spoiler: (text: string) => escaped(`||${escapeMarkdown(text)}||`),
+    inlineUrl: (text: string, url: string) => escaped(`[${escapeMarkdown(text)}](${url})`),
     inlineMention: (text: string, userId: string) => escaped(`[${text}](tg://user?id=${userId})`),
     customEmoji: (emoji: string, emojiId: string) => escaped(`![${emoji}](tg://emoji?id=${emojiId})`),
-    inlineCode: (text: string) => escaped(`\`${text}\``),
-    codeBlock: (text: string, lang?: string) => escaped(`\`\`\`${lang ?? ''}\n${text}\n\`\`\``),
-    blockQuote: (text: string) => escaped(text.split('\n').map(line => `>${line}`).join('\n')),
+    inlineCode: (text: string) => escaped(`\`${escapeMarkdown(text)}\``),
+    codeBlock: (text: string, lang?: string) => escaped(`\`\`\`${lang ?? ''}\n${escapeMarkdown(text)}\n\`\`\``),
+    blockQuote: (text: string) => escaped(text.split('\n').map(line => `>${escapeMarkdown(line)}`).join('\n')),
     expandableBlockQuote: (text: string) => {
         const lines = text.split('\n');
         let result = '';
-        result += `**>${lines.shift()}\n`;
+        result += `**>${escapeMarkdown(lines.shift() ?? '')}\n`;
         for (const line of lines) {
-            result += `>${line}\n`;
+            result += `>${escapeMarkdown(line)}\n`;
         }
         result += '||';
         return escaped(result);
