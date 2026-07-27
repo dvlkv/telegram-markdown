@@ -1,5 +1,5 @@
 import 'dotenv/config';
-import { markdownV2, md, MdEscapedString, MdEscapedStringNestable } from './markdown';
+import { markdownV2, md } from './markdown';
 
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const CHAT_ID = process.env.TELEGRAM_CHAT_ID;
@@ -130,8 +130,64 @@ conditionalDescribe('Telegram Bot API integration', () => {
     expect(result).toBeDefined();
   });
 
-  it('codeBlock inside bold', async () => {
-    const message = md.bold`bold ${md.codeBlock('*Hello world!*')} still bold`.toString();
+  // pre entities can't be part of any other entity, including a blockquote: the '>' line
+  // prefixes would be swallowed into the code text. The quote and the code block have to
+  // be siblings instead.
+  it('sends a code block next to a block quote', async () => {
+    const message = markdownV2`${md.blockQuote('quote')}${md.codeBlock('*Hello world!*')}`;
+    const result = await sendTelegramMessage(message);
+    expect(result).toBeDefined();
+  });
+
+  // Spec note 1: backslashes must be escaped
+  it('sends text containing backslashes', async () => {
+    const message = markdownV2`path ${'C:\\dir\\file'} and a lone \\`;
+    const result = await sendTelegramMessage(message);
+    expect(result).toBeDefined();
+  });
+
+  // Spec note 2: only ` and \ are escaped inside code entities
+  it('sends code containing backticks and backslashes', async () => {
+    const message = markdownV2`${md.inlineCode('a `b` c \\ d')}
+${md.codeBlock('```\n*not bold*\nC:\\dir', 'text')}`;
+    const result = await sendTelegramMessage(message);
+    expect(result).toBeDefined();
+  });
+
+  // Spec note 3: ) and \ must be escaped inside the (...) part of a link
+  it('sends a link with parentheses in the url', async () => {
+    const message = md.inlineUrl('https://en.wikipedia.org/wiki/Telegram_(software)')('Telegram').toString();
+    const result = await sendTelegramMessage(message);
+    expect(result).toBeDefined();
+  });
+
+  // Spec note 5: italic/underline ambiguity is resolved with an empty bold entity
+  it('sends italic nested in underline', async () => {
+    const message = markdownV2`${md.underline(md.italic('italic underline'))} and ${md.italic(md.underline('underline italic'))}`;
+    const result = await sendTelegramMessage(message);
+    expect(result).toBeDefined();
+  });
+
+  // Date-time entities
+  it('sends a date-time entity with the default text', async () => {
+    const message = markdownV2`meeting at ${md.dateTime(new Date(Date.now() + 86_400_000))}`;
+    const result = await sendTelegramMessage(message);
+    expect(result).toBeDefined();
+  });
+
+  it('sends date-time entities in every documented format', async () => {
+    const unix = Math.floor(Date.now() / 1000) + 3600;
+    const message = markdownV2`
+${md.dateTimeText(unix, 'wDT')('22:45 tomorrow')}
+${md.dateTimeText(unix, 't')('22:45 tomorrow')}
+${md.dateTimeText(unix, 'r')('22:45 tomorrow')}
+${md.dateTimeText(unix)('22:45 tomorrow')}`;
+    const result = await sendTelegramMessage(message);
+    expect(result).toBeDefined();
+  });
+
+  it('sends a date-time entity nested in bold', async () => {
+    const message = md.bold`starts ${md.dateTimeText(Math.floor(Date.now() / 1000), 'r')('soon')}`.toString();
     const result = await sendTelegramMessage(message);
     expect(result).toBeDefined();
   });
