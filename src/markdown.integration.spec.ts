@@ -4,7 +4,13 @@ import { markdownV2, md } from './markdown';
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const CHAT_ID = process.env.TELEGRAM_CHAT_ID;
 
-async function sendTelegramMessage(text: string) {
+interface TelegramResponse {
+  ok: boolean;
+  description?: string;
+  result?: { text?: string; entities?: { type: string }[] };
+}
+
+async function sendTelegramMessage(text: string): Promise<TelegramResponse> {
   if (!BOT_TOKEN || !CHAT_ID) {
     throw new Error('TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID must be set in environment');
   }
@@ -18,7 +24,7 @@ async function sendTelegramMessage(text: string) {
       disable_web_page_preview: true,
     }),
   });
-  return res.json();
+  return res.json() as Promise<TelegramResponse>;
 }
 
 const conditionalDescribe = BOT_TOKEN && CHAT_ID ? describe : describe.skip;
@@ -27,69 +33,69 @@ conditionalDescribe('Telegram Bot API integration', () => {
   it('sends a bold message', async () => {
     const message = md.bold('Hello, integration!').toString();
     const result = await sendTelegramMessage(message);
-    expect(result).toBeDefined();
+    expect(result.ok).toBe(true);
   });
 
   it('sends a nested markdown message', async () => {
     const message = md.bold`Hello ${md.italic('world')}`.toString();
     const result = await sendTelegramMessage(message);
-    expect(result).toBeDefined();
+    expect(result.ok).toBe(true);
   });
 
   it('sends a nested markdown message', async () => {
     const message = md.italic`Hello ${md.bold('world')}`.toString();
     const result = await sendTelegramMessage(message);
-    expect(result).toBeDefined();
+    expect(result.ok).toBe(true);
   });
 
   it('send block quote', async () => {
     const message = md.blockQuote`Hello ${md.bold('world')}
     tralala`.toString();
     const result = await sendTelegramMessage(message);
-    expect(result).toBeDefined();
+    expect(result.ok).toBe(true);
   });
 
   it('send italic underline', async () => {
     const message = md.italic`Hello ${md.underline('world')}`.toString();
     const result = await sendTelegramMessage(message);
-    expect(result).toBeDefined();
+    expect(result.ok).toBe(true);
   });
 
   it('send bold underline', async () => {
     const message = md.bold`Hello ${md.underline('world')}`.toString();
     const result = await sendTelegramMessage(message);
-    expect(result).toBeDefined();
+    expect(result.ok).toBe(true);
   });
 
   it('send italic strikethrough', async () => {
     const message = md.italic`Hello ${md.strikethrough('world')}`.toString();
     const result = await sendTelegramMessage(message);
-    expect(result).toBeDefined();
+    expect(result.ok).toBe(true);
   });
 
   it('send markdown bold italic strikethrough', async () => {
     const message = markdownV2`Hello ${md.bold(md.strikethrough('world'))}!`;
     const result = await sendTelegramMessage(message);
-    expect(result).toBeDefined();
+    expect(result.ok).toBe(true);
   });
 
   it('send markdown bold url', async () => {
     const message = markdownV2`Hello ${md.strikethrough(md.inlineUrl('https://example.com')('world'))}!`;
     const result = await sendTelegramMessage(message);
-    expect(result).toBeDefined();
+    expect(result.ok).toBe(true);
   });
 
   // Code block
   it('send code block', async () => {
     const message = md.codeBlock('*Hello world!*').toString();
     const result = await sendTelegramMessage(message);
-    expect(result).toBeDefined();
+    expect(result.ok).toBe(true);
   });
 
   it('send code block with language', async () => {
     const message = md.codeBlock('*Hello world!*', 'js').toString();
     const result = await sendTelegramMessage(message);
-    expect(result).toBeDefined();
+    expect(result.ok).toBe(true);
   });
 
   // Block quote
@@ -105,7 +111,7 @@ conditionalDescribe('Telegram Bot API integration', () => {
     sd
     sds`.toString();
     const result = await sendTelegramMessage(message);
-    expect(result).toBeDefined();
+    expect(result.ok).toBe(true);
   });
 
   // Expandable block quote 
@@ -124,10 +130,8 @@ conditionalDescribe('Telegram Bot API integration', () => {
     test
     ${quote}test
     `;
-    console.log(message);
     const result = await sendTelegramMessage(message);
-    console.log(result);
-    expect(result).toBeDefined();
+    expect(result.ok).toBe(true);
   });
 
   // pre entities can't be part of any other entity, including a blockquote: the '>' line
@@ -136,14 +140,14 @@ conditionalDescribe('Telegram Bot API integration', () => {
   it('sends a code block next to a block quote', async () => {
     const message = markdownV2`${md.blockQuote('quote')}${md.codeBlock('*Hello world!*')}`;
     const result = await sendTelegramMessage(message);
-    expect(result).toBeDefined();
+    expect(result.ok).toBe(true);
   });
 
   // Spec note 1: backslashes must be escaped
   it('sends text containing backslashes', async () => {
     const message = markdownV2`path ${'C:\\dir\\file'} and a lone \\`;
     const result = await sendTelegramMessage(message);
-    expect(result).toBeDefined();
+    expect(result.ok).toBe(true);
   });
 
   // Spec note 2: only ` and \ are escaped inside code entities
@@ -151,28 +155,28 @@ conditionalDescribe('Telegram Bot API integration', () => {
     const message = markdownV2`${md.inlineCode('a `b` c \\ d')}
 ${md.codeBlock('```\n*not bold*\nC:\\dir', 'text')}`;
     const result = await sendTelegramMessage(message);
-    expect(result).toBeDefined();
+    expect(result.ok).toBe(true);
   });
 
   // Spec note 3: ) and \ must be escaped inside the (...) part of a link
   it('sends a link with parentheses in the url', async () => {
     const message = md.inlineUrl('https://en.wikipedia.org/wiki/Telegram_(software)')('Telegram').toString();
     const result = await sendTelegramMessage(message);
-    expect(result).toBeDefined();
+    expect(result.ok).toBe(true);
   });
 
   // Spec note 5: italic/underline ambiguity is resolved with an empty bold entity
   it('sends italic nested in underline', async () => {
     const message = markdownV2`${md.underline(md.italic('italic underline'))} and ${md.italic(md.underline('underline italic'))}`;
     const result = await sendTelegramMessage(message);
-    expect(result).toBeDefined();
+    expect(result.ok).toBe(true);
   });
 
   // Date-time entities
   it('sends a date-time entity with the default text', async () => {
     const message = markdownV2`meeting at ${md.dateTime(new Date(Date.now() + 86_400_000))}`;
     const result = await sendTelegramMessage(message);
-    expect(result).toBeDefined();
+    expect(result.ok).toBe(true);
   });
 
   it('sends date-time entities in every documented format', async () => {
@@ -183,13 +187,13 @@ ${md.dateTimeText(unix, 't')('22:45 tomorrow')}
 ${md.dateTimeText(unix, 'r')('22:45 tomorrow')}
 ${md.dateTimeText(unix)('22:45 tomorrow')}`;
     const result = await sendTelegramMessage(message);
-    expect(result).toBeDefined();
+    expect(result.ok).toBe(true);
   });
 
   it('sends a date-time entity nested in bold', async () => {
     const message = md.bold`starts ${md.dateTimeText(Math.floor(Date.now() / 1000), 'r')('soon')}`.toString();
     const result = await sendTelegramMessage(message);
-    expect(result).toBeDefined();
+    expect(result.ok).toBe(true);
   });
 
   it('expandable block quote inside markdown', async () => {
@@ -207,6 +211,6 @@ ${md.dateTimeText(unix)('22:45 tomorrow')}`;
     ds`}test
     `;
     const result = await sendTelegramMessage(message);
-    expect(result).toBeDefined();
+    expect(result.ok).toBe(true);
   });
 }); 
