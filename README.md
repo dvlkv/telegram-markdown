@@ -1,6 +1,16 @@
 # Telegram Markdown
 
-A TypeScript library for formatting text with Telegram's Markdown V2 syntax using template literals.
+A TypeScript library for building Telegram message markup with template literals. It covers
+both formatting modes of the Bot API:
+
+- **MarkdownV2** (`md`, `markdownV2`) — the `parse_mode` used by `sendMessage`. See
+  [Formatting options](https://core.telegram.org/bots/api#formatting-options).
+- **Rich Markdown** (`rich`, `richDocument`, `richMarkdown`) — the structured format used by
+  `sendRichMessage`, with headings, lists, tables, footnotes, media and collapsible blocks.
+  See [Rich Message Formatting Options](https://core.telegram.org/bots/api#rich-message-formatting-options).
+
+The two are different syntaxes and are not interchangeable: MarkdownV2 uses `*bold*`, Rich
+Markdown uses `**bold**`. Pick the one that matches the API method you are calling.
 
 ## Installation
 
@@ -193,6 +203,89 @@ code), `MdEscapedLink` (links, mentions, custom emoji, date-time — can't be ne
 `MdNestedValue`, `MdLinkInput`, `MdLinkValue`, `MdQuoteInput`, `MdQuoteValue`, `MdCodeInput` and
 `MdCodeValue`.
 
+## Rich messages
+
+Rich messages are sent with `sendRichMessage` and carry structured content — headings, lists,
+tables, footnotes, media, collapsible blocks and formulas — rather than a single run of text.
+Build one with `rich.*` and assemble it with `richDocument`:
+
+```typescript
+import { rich, richDocument } from 'telegram-markdown';
+
+const markdown = richDocument(
+  rich.heading(2, rich.text`Report for ${rich.italic('Q1')}`),
+  rich.paragraph`Intro with ${rich.underline('underlined text')}, ${rich.marked('marked text')}, and ${rich.formula('x^2 + y^2')}.`,
+  rich.blockQuote(rich.text`Quote with ${rich.bold('bold')}, plus ${rich.link('https://t.me/')('a link')}.`),
+  rich.unorderedList([
+    rich.text`Item with ${rich.code('code')} and a footnote${rich.footnote('note')}`,
+    rich.text`Item with ${rich.strikethrough('strikethrough')}`,
+  ]),
+  rich.table({
+    header: ['Metric', 'Value'],
+    rows: [['Speed', rich.text`${rich.bold('42')} ${rich.superscript('ms')}`]],
+    align: ['left', 'right'],
+  }),
+  rich.footnoteDefinition('note', rich.text`Footnote with ${rich.italic('italic text')}.`),
+  rich.divider(),
+  rich.details('Summary', [rich.heading(3, 'Details heading'), rich.paragraph('Body')], { open: true }),
+);
+
+await fetch(`https://api.telegram.org/bot${token}/sendRichMessage`, {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({ chat_id: chatId, rich_message: { markdown } }),
+});
+```
+
+### Inline entities
+
+`rich.text` (no formatting — use it to build a *line* for a heading, list item, table cell,
+summary or footnote body), `bold`, `italic`, `strikethrough`, `marked`, `spoiler`,
+`underline`, `inserted`, `subscript`, `superscript`, `code`, `formula`, `link(url)`,
+`email(address)`, `phone(number)`, `mention(userId)`, `customEmoji(emoji, id)`,
+`dateTime(date, format)`, `dateTimeText(date, format)(label)`, `footnote(id)` and
+`uploaded(kind, id)` for `tg://photo?id=` style references to files sent in
+`InputRichMessage.media`.
+
+### Blocks
+
+`heading(level, text)`, `paragraph`, `divider()`, `pre(code, language?)`, `mathBlock(latex)`,
+`blockQuote`, `pullQuote(text, cite?)`, `unorderedList(items)`, `orderedList(items, { start })`,
+`taskList(items)`, `table({ header, rows, align })`, `footnoteDefinition(id, text)`,
+`media({ url, caption })`, `collage(items, caption?)`, `slideshow(items, caption?)`,
+`map({ latitude, longitude, zoom, caption })`, `details(summary, content, { open })` and
+`anchor(name)`.
+
+`richDocument(...blocks)` joins blocks with the blank line that separates them; the
+`richMarkdown` template tag does the same while escaping any interpolated text.
+
+### Escaping
+
+Rich Markdown is GitHub Flavored Markdown that may also contain HTML, so escaping differs
+from MarkdownV2:
+
+- `&` and `<` become `&amp;` and `&lt;`. A backslash in front of them would be rendered
+  literally, and both would otherwise start an HTML entity or tag.
+- Everything structural — ``\ ` * _ [ ] ( ) # + - . ! | ~ = $ { } >`` — is backslash-escaped.
+- `"`, `%`, `'`, `,`, `/`, `:`, `;`, `?`, `@` and `^` are left alone: a backslash does *not*
+  escape them and would show up in the message.
+- Code spans and `pre` blocks are never escaped; the fence is widened instead so that a body
+  containing backticks stays intact.
+- Formula source is passed through verbatim, as raw LaTeX.
+
+### Differences from MarkdownV2 worth knowing
+
+- **A date-time entity requires a format.** MarkdownV2 accepts
+  `![22:45](tg://time?unix=...)`, but a rich message is rejected with
+  `RICH_MESSAGE_PHOTO_URL_INVALID` because a `tg://time` link without a format is read as
+  media. `rich.dateTime`/`rich.dateTimeText` therefore take the format as a required
+  argument and throw when it is empty.
+- **A footnote definition only renders when its reference sits in the block right before
+  it.** Telegram drops definitions whose reference it cannot attach, and collects the ones
+  it keeps into a trailing `footer` block.
+- **Media is always its own block** and only HTTP(S) URLs are accepted, so a photo or video
+  cannot be placed inside a paragraph.
+
 ## Development
 
 ### Prerequisites
@@ -264,7 +357,16 @@ MIT
 ## Changelog
 
 ### 3.0.0
-- **Spec conformance** (Bot API "Rich message formatting options"):
+- **Rich messages** — new `rich` builder, `richDocument` and `richMarkdown` for the
+  structured format accepted by `sendRichMessage`: headings, paragraphs, dividers, lists
+  (unordered, ordered, task), block quotes, pull quotes, tables, footnotes, code and math
+  blocks, media, collages, slideshows, maps, anchors and collapsible `details` blocks, plus
+  the inline entities `marked`, `underline`, `inserted`, `subscript`, `superscript` and
+  LaTeX formulas. Escaping follows Rich Markdown's own rules (`&`/`<` as HTML entities).
+- `markdownV2` separates adjacent block quotes with an empty bold entity — they used to
+  merge into a single quote, and an expandable quote followed by another quote produced
+  markup the API rejected outright.
+- **Spec conformance** (Bot API "Formatting options"):
   - `escapeMarkdown` now escapes `\` as well (note 1); text containing backslashes is no longer corrupted.
   - Code entities use the dedicated code escaping — only `` ` `` and `\` (note 2). `md.codeBlock` escapes its
     body and language tag (a body containing ``` no longer breaks the message) and `md.inlineCode` no longer
