@@ -589,5 +589,34 @@ code block
       expect(markdownV2`${md.blockQuote('a')}
 tail`).toBe('>a\ntail');
     });
+
+    // Consecutive '>' lines are one blockquote, so adjacent quotes have to be separated by
+    // an empty bold entity — the same '**>' idiom the spec uses to start an expandable
+    // quote right after another quote. Without it the two quotes silently merge into one,
+    // and after an expandable quote the '||' terminator is left opening a spoiler that
+    // never closes, which the Bot API rejects outright.
+    it('should separate adjacent block quotes with an empty bold entity', () => {
+      expect(markdownV2`${md.blockQuote('a')}${md.blockQuote('b')}`).toBe('>a\n**>b');
+      expect(markdownV2`${md.blockQuote('a')}${md.expandableBlockQuote('b')}`).toBe('>a\n**>b||');
+      expect(markdownV2`${md.expandableBlockQuote('a')}${md.blockQuote('b')}`).toBe('**>a||\n**>b');
+      expect(markdownV2`${md.expandableBlockQuote('a')}${md.expandableBlockQuote('b')}`).toBe(
+        '**>a||\n**>b||',
+      );
+    });
+
+    it('should separate adjacent block quotes across whitespace-only text', () => {
+      // The whitespace is trimmed away by the next block, so the quotes still end up
+      // adjacent and still need the separator.
+      expect(markdownV2`${md.blockQuote('a')}
+${md.blockQuote('b')}`).toBe('>a\n**>b');
+    });
+
+    it('should not separate quotes that have real text between them', () => {
+      expect(markdownV2`${md.blockQuote('a')}mid${md.blockQuote('b')}`).toBe('>a\nmid\n>b');
+    });
+
+    it('should not add a separator after a non-quote block', () => {
+      expect(markdownV2`${md.codeBlock('x')}${md.blockQuote('b')}`).toBe('```\nx\n```\n>b');
+    });
   });
 });

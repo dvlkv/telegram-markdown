@@ -476,8 +476,9 @@ export const md = {
 export function markdownV2(strings: TemplateStringsArray, ...values: unknown[]): string {
     let result = '';
     let pendingBlockEnd = false;
+    let lastWasQuote = false;
 
-    const append = (chunk: string, blockStart: boolean): void => {
+    const append = (chunk: string, blockStart: boolean, isQuote = false): void => {
         if (chunk.length === 0) {
             return;
         }
@@ -487,8 +488,22 @@ export function markdownV2(strings: TemplateStringsArray, ...values: unknown[]):
         } else if (pendingBlockEnd && !chunk.startsWith('\n')) {
             result += '\n';
         }
+        // Consecutive '>' lines are a single blockquote, so two adjacent quotes would
+        // silently merge — and after an expandable quote the following '>' line keeps the
+        // quote open, leaving its '||' terminator to be read as an unterminated spoiler
+        // (the API rejects the whole message). An empty bold entity separates them, the
+        // same idiom the spec uses to start an expandable quote right after another one.
+        // An expandable quote already opens with '**>', so it carries its own separator.
+        const needsSeparator =
+            isQuote && lastWasQuote && !chunk.startsWith(EMPTY_BOLD_SEPARATOR);
+        const separated = needsSeparator ? `${EMPTY_BOLD_SEPARATOR}${chunk}` : chunk;
         pendingBlockEnd = false;
-        result = joinFragments(result, chunk);
+        result = joinFragments(result, separated);
+        // Whitespace between two quotes is trimmed away by the next block, so it must not
+        // count as something that separates them on its own.
+        if (chunk.trim().length > 0) {
+            lastWasQuote = isQuote;
+        }
     };
 
     for (let i = 0; i < strings.length; i++) {
@@ -499,7 +514,7 @@ export function markdownV2(strings: TemplateStringsArray, ...values: unknown[]):
         if (i < values.length) {
             const value = values[i];
             if (isEscapedString(value)) {
-                append(value.toString(), value.trimStart);
+                append(value.toString(), value.trimStart, value instanceof MdEscapedQuote);
                 pendingBlockEnd = value.blockEnd;
             } else {
                 append(escapeMarkdown(String(value)).toString(), false);
