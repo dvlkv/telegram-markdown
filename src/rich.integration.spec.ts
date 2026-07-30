@@ -79,7 +79,7 @@ conditionalDescribe('Rich message formatting', () => {
       rich.orderedList(['one', 'two'], { start: 3 }),
       rich.taskList([{ text: 'todo' }, { text: 'done', checked: true }]),
       rich.blockQuote('quoted line one\nquoted line two'),
-      rich.pullQuote('pulled', 'The Author'),
+      rich.pullQuote('pulled', { cite: 'The Author' }),
     );
 
     const { kinds } = await sendAndParse(document);

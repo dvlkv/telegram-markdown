@@ -77,6 +77,11 @@ function isInline(value: unknown): value is RichInline {
     return value instanceof RichInline;
 }
 
+/** True for the first argument a tagged template literal passes to its tag function. */
+function isTemplateStrings(value: unknown): value is TemplateStringsArray {
+    return Array.isArray(value) && 'raw' in value;
+}
+
 /**
  * Escapes text so that it survives Rich Markdown parsing unchanged.
  *
@@ -91,6 +96,35 @@ export function escapeRich(text: string): RichInline {
         .replace(/</g, '&lt;')
         .replace(RICH_SPECIAL_CHARACTERS, '\\$&');
     return new RichInline(escaped);
+}
+
+/**
+ * Escapes text for a context that is *not* parsed as Markdown: the body of `<aside>` and
+ * the `<figcaption>` of a collage, slideshow or map. Markdown isn't parsed inside block HTML
+ * tags other than `<details>`, `<tg-collage>` and `<tg-slideshow>`, so a backslash escape
+ * would be rendered literally; only HTML entities and tags are interpreted there.
+ */
+function escapePlainText(text: string): string {
+    return String(text).replace(/&/g, '&amp;').replace(/</g, '&lt;');
+}
+
+/** Like {@link resolveInline}, but for the non-Markdown contexts above. */
+function resolvePlain(text: RichInput, values: readonly RichValue[]): string {
+    if (isInline(text)) {
+        return text.toString();
+    }
+    if (isTemplateStrings(text)) {
+        let result = '';
+        for (let i = 0; i < text.length; i++) {
+            result += escapePlainText(text[i] as string);
+            if (i < values.length) {
+                const value = values[i];
+                result += isInline(value) ? value.toString() : escapePlainText(String(value));
+            }
+        }
+        return result;
+    }
+    return escapePlainText(String(text));
 }
 
 /** Escapes a value used inside an HTML attribute, e.g. a media URL or a caption. */
@@ -111,7 +145,7 @@ function resolveInline(text: RichInput, values: readonly RichValue[]): string {
     if (isInline(text)) {
         return text.toString();
     }
-    if (Array.isArray(text)) {
+    if (isTemplateStrings(text)) {
         let result = '';
         for (let i = 0; i < text.length; i++) {
             result += escapeRich(text[i] as string).toString();
@@ -197,9 +231,9 @@ export type RichMediaKind = 'photo' | 'video' | 'audio';
 
 export interface RichTable {
     /** Header cells. Their count defines the number of columns. */
-    header: readonly (RichInput | RichValue)[];
+    header: readonly RichValue[];
     /** Body rows; shorter rows are padded with empty cells. */
-    rows: readonly (readonly (RichInput | RichValue)[])[];
+    rows: readonly (readonly RichValue[])[];
     /** Per-column alignment, defaulting to the renderer's own. */
     align?: readonly ('left' | 'center' | 'right' | undefined)[];
 }
@@ -226,14 +260,49 @@ export interface RichMapOptions {
     caption?: string;
 }
 
-function cellText(cell: RichInput | RichValue): string {
+function cellText(cell: RichValue): string {
     if (isInline(cell)) {
         return cell.toString();
     }
-    if (Array.isArray(cell)) {
-        return resolveInline(cell as TemplateStringsArray, []);
-    }
     return escapeRich(String(cell ?? '')).toString();
+}
+
+/** Credit shown under a pull quote. */
+export interface RichPullQuoteOptions {
+    cite?: string;
+}
+
+/**
+ * Block quotation. Usable as a tagged template for a single line of inline content, or with
+ * whole blocks: `rich.blockQuote\`Quote with ${rich.bold('bold')}\`` and
+ * `rich.blockQuote(rich.paragraph('a'), rich.paragraph('b'))` both work.
+ */
+function blockQuote(text: TemplateStringsArray, ...values: RichValue[]): RichBlock;
+function blockQuote(text: RichBlockInput, ...more: RichBlockInput[]): RichBlock;
+function blockQuote(text: RichBlockInput | TemplateStringsArray, ...rest: unknown[]): RichBlock {
+    const body = isTemplateStrings(text)
+        ? resolveInline(text, rest as RichValue[])
+        : joinBlocks([text as RichBlockInput, ...(rest as RichBlockInput[])]);
+    return new RichBlock(prefixLines(body, '>', '>'));
+}
+
+/**
+ * Pull quote with optional credit, rendered with the `<aside>` tag. The credit is passed as
+ * an option rather than a second argument so that the tagged-template form stays
+ * unambiguous: `rich.pullQuote\`…\`` and `rich.pullQuote('…', { cite: 'The Author' })`.
+ *
+ * Markdown is not parsed inside `<aside>`, so text is only HTML-escaped here and the
+ * Markdown-based entities (bold, italic, ...) would show up as literal asterisks. Use the
+ * HTML-based ones — `underline`, `inserted`, `subscript`, `superscript` — instead.
+ */
+function pullQuote(text: TemplateStringsArray, ...values: RichValue[]): RichBlock;
+function pullQuote(text: RichInput, options?: RichPullQuoteOptions): RichBlock;
+function pullQuote(text: RichInput, ...rest: unknown[]): RichBlock {
+    const template = isTemplateStrings(text);
+    const body = template ? resolvePlain(text, rest as RichValue[]) : resolvePlain(text, []);
+    const cite = template ? undefined : (rest[0] as RichPullQuoteOptions | undefined)?.cite;
+    const credit = cite === undefined ? '' : `<cite>${escapePlainText(cite)}</cite>`;
+    return new RichBlock(`<aside>${body}${credit}</aside>`);
 }
 
 function mediaBlock(media: RichMedia): string {
@@ -352,15 +421,8 @@ export const rich = {
     /** Block formula. The LaTeX source is passed through verbatim. */
     mathBlock: (latex: string): RichBlock => new RichBlock(`\`\`\`math\n${String(latex)}\n\`\`\``),
 
-    blockQuote: (text: RichBlockInput, ...more: RichBlockInput[]): RichBlock =>
-        new RichBlock(prefixLines(joinBlocks([text, ...more]), '>', '>')),
-
-    /** Pull quote with optional credit, rendered with the `<aside>` tag. */
-    pullQuote: (text: RichInput, cite?: string): RichBlock => {
-        const body = resolveInline(text, []);
-        const credit = cite === undefined ? '' : `<cite>${escapeRich(cite).toString()}</cite>`;
-        return new RichBlock(`<aside>${body}${credit}</aside>`);
-    },
+    blockQuote,
+    pullQuote,
 
     unorderedList: (items: readonly RichInput[]): RichBlock =>
         new RichBlock(
@@ -464,6 +526,11 @@ export const rich = {
         mediaGroup('tg-slideshow', items, caption),
 
     map: ({ latitude, longitude, zoom, caption }: RichMapOptions): RichBlock => {
+        if (caption !== undefined && zoom === undefined) {
+            // A captioned map is wrapped in <figure>, and Telegram then drops the whole
+            // block — producing a message with no content at all — unless zoom is given.
+            throw new Error('A map with a caption also needs a zoom level');
+        }
         const tag =
             `<tg-map lat="${escapeAttribute(String(latitude))}" ` +
             `long="${escapeAttribute(String(longitude))}"` +
@@ -471,8 +538,9 @@ export const rich = {
         if (caption === undefined) {
             return new RichBlock(tag);
         }
+        // <figcaption> is not a Markdown context either.
         return new RichBlock(
-            `<figure>${tag}<figcaption>${escapeRich(caption).toString()}</figcaption></figure>`,
+            `<figure>${tag}<figcaption>${escapePlainText(caption)}</figcaption></figure>`,
         );
     },
 
@@ -490,10 +558,9 @@ function mediaGroup(
         throw new Error(`A <${tag}> needs at least one media element`);
     }
     const body = items.map(mediaBlock).join('\n');
+    // The media blocks inside are parsed as Markdown, but the <figcaption> itself is not.
     const figcaption =
-        caption === undefined
-            ? ''
-            : `\n\n<figcaption>${escapeRich(caption).toString()}</figcaption>`;
+        caption === undefined ? '' : `\n\n<figcaption>${escapePlainText(caption)}</figcaption>`;
     return new RichBlock(`<${tag}>\n\n${body}${figcaption}\n\n</${tag}>`);
 }
 

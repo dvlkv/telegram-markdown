@@ -191,8 +191,46 @@ describe('rich markdown', () => {
       expect(rich.blockQuote('one\ntwo').toString()).toBe('>one\n>two');
       expect(rich.blockQuote(rich.paragraph`a ${rich.bold('b')}`).toString()).toBe('>a **b**');
       expect(rich.pullQuote('quoted').toString()).toBe('<aside>quoted</aside>');
-      expect(rich.pullQuote('quoted', 'The Author').toString()).toBe(
+      expect(rich.pullQuote('quoted', { cite: 'The Author' }).toString()).toBe(
         '<aside>quoted<cite>The Author</cite></aside>',
+      );
+    });
+
+    // Both take a tagged template for a single line of inline content. The credit of a pull
+    // quote is an option rather than a second argument, so an interpolated value can never
+    // be mistaken for it.
+    it('should accept quotes as tagged templates', () => {
+      // the trailing '.' is escaped, like any other structural character
+      expect(rich.blockQuote`Quote with ${rich.bold('bold')}.`.toString()).toBe(
+        '>Quote with **bold**\\.',
+      );
+      expect(rich.blockQuote`a ${'b'} c`.toString()).toBe('>a b c');
+      // the interpolated value stays in the body instead of becoming the credit
+      expect(rich.pullQuote`a ${'b'} c`.toString()).toBe('<aside>a b c</aside>');
+    });
+
+    // Markdown is not parsed inside <aside>, so a backslash escape would be rendered
+    // literally. Only HTML entities and HTML tags are interpreted there.
+    it('should HTML-escape a pull quote instead of backslash-escaping it', () => {
+      expect(rich.pullQuote('costs $5. 100% - really!').toString()).toBe(
+        '<aside>costs $5. 100% - really!</aside>',
+      );
+      expect(rich.pullQuote`a & b <c>`.toString()).toBe('<aside>a &amp; b &lt;c></aside>');
+      expect(rich.pullQuote('x', { cite: 'A & B' }).toString()).toBe(
+        '<aside>x<cite>A &amp; B</cite></aside>',
+      );
+      // the HTML-based inline entities still work there
+      expect(rich.pullQuote`by ${rich.underline('u')}`.toString()).toBe(
+        '<aside>by <u>u</u></aside>',
+      );
+      expect(rich.pullQuote(rich.underline('u')).toString()).toBe('<aside><u>u</u></aside>');
+    });
+
+    it('should keep multi-line and multi-block quotes working', () => {
+      expect(rich.blockQuote`line one
+line two`.toString()).toBe('>line one\n>line two');
+      expect(rich.blockQuote(rich.paragraph('a'), rich.paragraph('b')).toString()).toBe(
+        '>a\n>\n>b',
       );
     });
 
@@ -283,8 +321,9 @@ describe('rich markdown', () => {
       expect(rich.collage([{ url: 'a.jpg' }, { url: 'b.mp4' }]).toString()).toBe(
         '<tg-collage>\n\n![](a.jpg)\n![](b.mp4)\n\n</tg-collage>',
       );
-      expect(rich.slideshow([{ url: 'a.jpg' }], 'Cap').toString()).toBe(
-        '<tg-slideshow>\n\n![](a.jpg)\n\n<figcaption>Cap</figcaption>\n\n</tg-slideshow>',
+      // the <figcaption> is not a Markdown context, so it is only HTML-escaped
+      expect(rich.slideshow([{ url: 'a.jpg' }], 'Cap & co').toString()).toBe(
+        '<tg-slideshow>\n\n![](a.jpg)\n\n<figcaption>Cap &amp; co</figcaption>\n\n</tg-slideshow>',
       );
       expect(() => rich.collage([])).toThrow(/at least one media element/);
       expect(() => rich.slideshow([])).toThrow(/at least one media element/);
@@ -310,8 +349,15 @@ describe('rich markdown', () => {
         '<tg-map lat="41.9" long="12.5" zoom="14"/>',
       );
       expect(
-        rich.map({ latitude: 1, longitude: 2, caption: 'Rome' }).toString(),
-      ).toBe('<figure><tg-map lat="1" long="2"/><figcaption>Rome</figcaption></figure>');
+        rich.map({ latitude: 1, longitude: 2, zoom: 14, caption: 'Rome & Co' }).toString(),
+      ).toBe(
+        '<figure><tg-map lat="1" long="2" zoom="14"/>' +
+          '<figcaption>Rome &amp; Co</figcaption></figure>',
+      );
+      // without a zoom level Telegram drops the whole <figure>, leaving an empty message
+      expect(() => rich.map({ latitude: 1, longitude: 2, caption: 'Rome' })).toThrow(
+        /also needs a zoom level/,
+      );
       expect(rich.anchor('chapter-1').toString()).toBe('<a name="chapter-1"></a>');
       expect(rich.anchor('a"b').toString()).toBe('<a name="a&quot;b"></a>');
     });
@@ -328,6 +374,12 @@ describe('rich markdown', () => {
     it('should escape plain strings passed as blocks and skip empty ones', () => {
       expect(richDocument('a *b*')).toBe('a \\*b\\*');
       expect(richDocument(rich.paragraph('a'), '', rich.paragraph('b'))).toBe('a\n\nb');
+    });
+
+    it('should accept an inline fragment as a standalone block', () => {
+      expect(richDocument(rich.text`a ${rich.bold('b')}`, rich.paragraph('c'))).toBe(
+        'a **b**\n\nc',
+      );
     });
 
     it('should interpolate inline fragments in a template', () => {

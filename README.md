@@ -250,7 +250,7 @@ summary or footnote body), `bold`, `italic`, `strikethrough`, `marked`, `spoiler
 ### Blocks
 
 `heading(level, text)`, `paragraph`, `divider()`, `pre(code, language?)`, `mathBlock(latex)`,
-`blockQuote`, `pullQuote(text, cite?)`, `unorderedList(items)`, `orderedList(items, { start })`,
+`blockQuote`, `pullQuote(text, { cite })`, `unorderedList(items)`, `orderedList(items, { start })`,
 `taskList(items)`, `table({ header, rows, align })`, `footnoteDefinition(id, text)`,
 `media({ url, caption })`, `collage(items, caption?)`, `slideshow(items, caption?)`,
 `map({ latitude, longitude, zoom, caption })`, `details(summary, content, { open })` and
@@ -258,6 +258,31 @@ summary or footnote body), `bold`, `italic`, `strikethrough`, `marked`, `spoiler
 
 `richDocument(...blocks)` joins blocks with the blank line that separates them; the
 `richMarkdown` template tag does the same while escaping any interpolated text.
+
+### Template literals
+
+Everything that takes a single run of inline content works as a tagged template, escaping
+the literal parts and passing nested fragments through untouched:
+
+```typescript
+rich.text`a ${rich.bold('b')} c`;          // inline, no formatting of its own
+rich.bold`a ${rich.italic('i')} c`;        // and italic, marked, underline, spoiler, …
+rich.link('https://t.me/')`see ${rich.bold('this')}`;
+rich.paragraph`Intro with ${rich.marked('marked text')}.`;
+rich.blockQuote`Quote with ${rich.bold('bold')}.`;
+rich.pullQuote`Pulled with ${rich.underline('underline')}`;
+richMarkdown`a ${rich.bold('b')} c`;       // the whole document
+```
+
+Builders whose first argument is configuration rather than text — `heading`, `orderedList`,
+`table`, `footnoteDefinition`, `details` — are not tag functions. Build the line with
+`rich.text` and pass it in:
+
+```typescript
+rich.heading(2, rich.text`Report for ${rich.italic('Q1')}`);
+rich.unorderedList([rich.text`Item with ${rich.code('code')}`]);
+rich.table({ header: ['Metric'], rows: [[rich.text`${rich.bold('42')} ms`]] });
+```
 
 ### Escaping
 
@@ -285,6 +310,17 @@ from MarkdownV2:
   it keeps into a trailing `footer` block.
 - **Media is always its own block** and only HTTP(S) URLs are accepted, so a photo or video
   cannot be placed inside a paragraph.
+- **Pull quotes and `<figcaption>` captions are not Markdown.** Markdown isn't parsed inside
+  block HTML tags other than `<details>`, `<tg-collage>` and `<tg-slideshow>`, so
+  `rich.pullQuote` and the captions of `collage`, `slideshow` and `map` are HTML-escaped
+  instead of backslash-escaped — a backslash would otherwise be rendered literally. The
+  Markdown-based entities show up as literal asterisks there; the HTML-based ones
+  (`underline`, `inserted`, `subscript`, `superscript`) work as expected. Headings, list
+  items, table cells, `<summary>` and the caption of `rich.media` *are* Markdown contexts and
+  take any inline entity.
+- **A captioned map needs a zoom level.** The caption wraps the map in `<figure>`, and
+  without `zoom` Telegram drops the whole block, producing an empty message. `rich.map`
+  throws instead.
 
 ## Development
 
